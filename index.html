@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Bus Tracking</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+    <style>
+        body,
+        html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            width: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+        }
+
+        #header {
+            background-color: #2b3990;
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.4rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .status-dot {
+            height: 12px;
+            width: 12px;
+            background-color: #4CAF50;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 8px;
+            box-shadow: 0 0 8px #4CAF50;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100vw;
+            z-index: 1;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="header">
+        <h1>Live Bus Tracker - 12B</h1>
+        <div style="display: flex; align-items: center;">
+            <span class="status-dot" id="status-indicator"
+                style="background-color: #ff9800; box-shadow: 0 0 8px #ff9800;"></span>
+            <span id="status-text" style="font-size: 0.9rem;">Connecting...</span>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script>
+
+        var defaultLocation = [12.870497, 80.219833];
+
+        var map = L.map('map', {
+            zoomControl: false // Move zoom control below header
+        }).setView(defaultLocation, 16);
+
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19
+        }).addTo(map);
+
+        var busIcon = L.icon({
+            // Custom 3D Blue Bus uploaded by user
+            iconUrl: 'image.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+            iconSize: [64, 48], // Wider dimension to fit the rectangular blue bus
+            shadowSize: [64, 48],
+            iconAnchor: [32, 48], // Anchored properly
+            shadowAnchor: [20, 48],
+            popupAnchor: [0, -48]
+        });
+
+        var marker = L.marker(defaultLocation, { icon: busIcon })
+            .addTo(map)
+            .bindPopup('<b>Bus Location</b><br>Waiting for GPS signal...')
+            .openPopup();
+
+        // Initialize Firebase
+        var firebaseConfig = {
+            databaseURL: "https://bustracker-b8007-default-rtdb.firebaseio.com/" // Replace with actual Firebase URL
+        };
+        firebase.initializeApp(firebaseConfig);
+
+        var statusIndicator = document.getElementById('status-indicator');
+        var statusText = document.getElementById('status-text');
+
+        // Timeout variable
+        var offlineTimeout;
+
+        // Function to set tracker to Offline/Not Active
+        function setOfflineStatus() {
+            statusIndicator.style.backgroundColor = '#f44336';
+            statusIndicator.style.boxShadow = '0 0 8px #f44336';
+            statusText.innerText = 'Not Active';
+            marker.setOpacity(0.5); // make bus semi-transparent to indicate it's offline
+
+            // Check if marker popup exists before setting content
+            if (marker.getPopup()) {
+                marker.getPopup().setContent(`<b>Bus 12B is Offline</b><br>Last known location...`);
+            }
+        }
+
+        // Listen for database updates
+        var busRef = firebase.database().ref("bus");
+
+        busRef.on("value", function (snapshot) {
+            var data = snapshot.val();
+
+            if (data && data.lat && data.lng) {
+                // Clear the offline timer every time we get new data
+                clearTimeout(offlineTimeout);
+
+                // Update UI status to Active
+                statusIndicator.style.backgroundColor = '#4CAF50';
+                statusIndicator.style.boxShadow = '0 0 8px #4CAF50';
+                statusText.innerText = 'Live';
+                marker.setOpacity(1.0); // full visibility
+
+                var newLatLng = [data.lat, data.lng];
+
+                // Update marker position and map view
+                marker.setLatLng(newLatLng);
+                map.flyTo(newLatLng, map.getZoom(), { animate: true, duration: 1.0 });
+
+                // Update popup
+                marker.getPopup().setContent(`<b>Bus 12B is Active</b><br>Lat: ${data.lat.toFixed(5)}<br>Lng: ${data.lng.toFixed(5)}`);
+
+                // Set a timer: if 10 seconds pass without another update, mark as Not Active
+                offlineTimeout = setTimeout(setOfflineStatus, 10000);
+
+            } else {
+                setOfflineStatus();
+            }
+        }, function (error) {
+            console.error("Firebase Read Error: ", error);
+            statusIndicator.style.backgroundColor = '#f44336';
+            statusIndicator.style.boxShadow = '0 0 8px #f44336';
+            statusText.innerText = 'Error';
+            marker.getPopup().setContent('<b>Connection Error</b>');
+        });
+
+    </script>
+</body>
+
+</html>
