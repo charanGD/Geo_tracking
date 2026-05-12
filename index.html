@@ -57,13 +57,156 @@
             width: 100vw;
             z-index: 1;
         }
+        
+        .custom-bus-marker {
+            background: none !important;
+            border: none !important;
+        }
+
+        /* Route Page Overlay Styles */
+        #route-page {
+            position: fixed;
+            top: 100%; /* Hidden by default (slides up) */
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #f8f9fa;
+            z-index: 2000;
+            transition: top 0.3s ease-in-out;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #route-page.active {
+            top: 0;
+        }
+
+        .route-header {
+            background-color: #2b3990;
+            color: white;
+            padding: 20px;
+            display: flex;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .back-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+            margin-right: 15px;
+            display: flex;
+            align-items: center;
+        }
+
+        .timeline {
+            padding: 30px 20px;
+            flex-grow: 1;
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-left: 40px;
+            margin-bottom: 30px;
+        }
+
+        .timeline-item:last-child {
+            margin-bottom: 0;
+        }
+
+        /* The vertical line */
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: 11px; /* Center with the dot */
+            top: 24px;
+            bottom: -30px;
+            width: 2px;
+            background-color: #ddd;
+        }
+
+        .timeline-item:last-child::before {
+            display: none; /* No line after the last item */
+        }
+
+        /* The dot */
+        .timeline-dot {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #fff;
+            border: 2px solid #ddd;
+            z-index: 1;
+            font-size: 0.8rem;
+        }
+
+        /* Statuses */
+        .timeline-item.passed .timeline-dot {
+            background-color: #4CAF50;
+            border-color: #4CAF50;
+            color: white;
+        }
+
+        .timeline-item.passed::before {
+            background-color: #4CAF50; /* Green line for passed items */
+        }
+
+        .timeline-item.current .timeline-dot {
+            background-color: #2196F3;
+            border-color: #2196F3;
+            box-shadow: 0 0 0 4px rgba(33, 150, 243, 0.2);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(33, 150, 243, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(33, 150, 243, 0); }
+        }
+
+        .station-name {
+            font-size: 1.1rem;
+            font-weight: 500;
+            margin: 0 0 4px 0;
+            color: #333;
+        }
+
+        .station-status {
+            font-size: 0.85rem;
+            color: #666;
+            margin: 0;
+        }
+
+        .timeline-item.passed .station-status {
+            color: #4CAF50;
+        }
+
+        .timeline-item.current .station-name {
+            color: #2196F3;
+            font-weight: 600;
+        }
+        .timeline-item.current .station-status {
+            color: #2196F3;
+        }
     </style>
 </head>
 
 <body>
 
     <div id="header">
-        <h1>Live Bus Tracker - 12B</h1>
+        <h1>Bus Tracker</h1>
         <div style="display: flex; align-items: center;">
             <span class="status-dot" id="status-indicator"
                 style="background-color: #ff9800; box-shadow: 0 0 8px #ff9800;"></span>
@@ -72,6 +215,19 @@
     </div>
 
     <div id="map"></div>
+
+    <!-- Route Progress Overlay -->
+    <div id="route-page">
+        <div class="route-header">
+            <button class="back-btn" onclick="closeRoutePage()">
+                &#8592;
+            </button>
+            <h1 style="font-size: 1.2rem; margin: 0;">Bus 12B</h1>
+        </div>
+        <div class="timeline" id="timeline-container">
+            <!-- Timeline items will be injected here via JS -->
+        </div>
+    </div>
 
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
@@ -88,26 +244,112 @@
 
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
             maxZoom: 19
         }).addTo(map);
 
-        var busIcon = L.icon({
-            // Custom 3D Blue Bus uploaded by user
-            iconUrl: 'image.png',
-            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-            iconSize: [64, 48], // Wider dimension to fit the rectangular blue bus
-            shadowSize: [64, 48],
-            iconAnchor: [32, 48], // Anchored properly
-            shadowAnchor: [20, 48],
-            popupAnchor: [0, -48]
+        const busIconImg = `<img src="top_bus.png" id="bus-svg" style="width: 100%; height: 100%; transition: transform 1s linear; transform-origin: center center; filter: drop-shadow(0px 8px 10px rgba(0,0,0,0.4));" />`;
+
+        var busIcon = L.divIcon({
+            className: 'custom-bus-marker',
+            html: busIconImg,
+            iconSize: [60, 60],
+            iconAnchor: [30, 30],
+            popupAnchor: [0, -30]
         });
 
         var marker = L.marker(defaultLocation, { icon: busIcon })
             .addTo(map)
             .bindPopup('<b>Bus Location</b><br>Waiting for GPS signal...')
             .openPopup();
+
+        // Open the station/route page directly when the user clicks the bus icon
+        marker.on('click', function() {
+            openRoutePage();
+        });
+
+        // Sample bus stations
+        var busStations = [
+            { name: "Sathyabama College", lat: 12.870497, lng: 80.219833 },
+            { name: "Sholinganallur", lat: 12.9006, lng: 80.2275 },
+            { name: "Karapakkam", lat: 12.9191, lng: 80.2300 },
+            { name: "Thoraipakkam", lat: 12.9396, lng: 80.2355 },
+            { name: "Perungudi", lat: 12.9654, lng: 80.2458 }
+        ];
+
+        // Function to determine the next station based on closest distance
+        function getNextStation(lat, lng) {
+            var nearest = busStations[0];
+            var minDistance = Infinity;
+            var currentPos = L.latLng(lat, lng);
+
+            for (var i = 0; i < busStations.length; i++) {
+                var stationPos = L.latLng(busStations[i].lat, busStations[i].lng);
+                var distance = currentPos.distanceTo(stationPos);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearest = busStations[i];
+                }
+            }
+            return nearest.name;
+        }
+
+        // Open & Close Route Page functionality
+        function closeRoutePage() {
+            document.getElementById('route-page').classList.remove('active');
+        }
+
+        function openRoutePage() {
+            var currentPos = marker.getLatLng();
+            
+            // Determine the nearest station index
+            var nearestIndex = 0;
+            var minDistance = Infinity;
+            
+            for (var i = 0; i < busStations.length; i++) {
+                var stationPos = L.latLng(busStations[i].lat, busStations[i].lng);
+                var distance = currentPos.distanceTo(stationPos);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    nearestIndex = i;
+                }
+            }
+
+            var timelineHtml = '';
+            
+            for (var i = 0; i < busStations.length; i++) {
+                var statusClass = '';
+                var statusText = '';
+                var dotContent = '';
+
+                if (i < nearestIndex) {
+                    statusClass = 'passed';
+                    statusText = 'Passed';
+                    dotContent = '&#10003;'; // Checkmark
+                } else if (i === nearestIndex) {
+                    statusClass = 'current';
+                    statusText = 'Next Stop';
+                    dotContent = ''; // Empty dot for current
+                } else {
+                    statusClass = 'upcoming';
+                    statusText = 'Upcoming';
+                    dotContent = ''; // Empty dot for upcoming
+                }
+
+                timelineHtml += `
+                    <div class="timeline-item ${statusClass}">
+                        <div class="timeline-dot">${dotContent}</div>
+                        <h3 class="station-name">${busStations[i].name}</h3>
+                        <p class="station-status">${statusText}</p>
+                    </div>
+                `;
+            }
+
+            document.getElementById('timeline-container').innerHTML = timelineHtml;
+            document.getElementById('route-page').classList.add('active');
+        }
 
         // Initialize Firebase
         var firebaseConfig = {
@@ -128,20 +370,49 @@
             statusText.innerText = 'Not Active';
             marker.setOpacity(0.5); // make bus semi-transparent to indicate it's offline
 
-            // Check if marker popup exists before setting content
+            // Update popup if it exists
             if (marker.getPopup()) {
-                marker.getPopup().setContent(`<b>Bus 12B is Offline</b><br>Last known location...`);
+                var currentPos = marker.getLatLng();
+                var nextStation = getNextStation(currentPos.lat, currentPos.lng);
+                marker.getPopup().setContent(`<b>Bus 12B is Offline</b><br>Next Station: <b>${nextStation}</b><br><br><button onclick="openRoutePage()" style="padding: 6px 12px; background: #2b3990; color: white; border: none; border-radius: 4px; cursor: pointer; width: 100%;">View Route Progress</button>`);
             }
         }
 
         // Listen for database updates
         var busRef = firebase.database().ref("bus");
+        var lastLatLng = null;
+        var lastTs = null;       // Track the last timestamp from ESP
+        var isFirstLoad = true;  // Flag to detect initial page load
 
         busRef.on("value", function (snapshot) {
             var data = snapshot.val();
 
             if (data && data.lat && data.lng) {
-                // Clear the offline timer every time we get new data
+                var currentTs = data.ts || null;
+
+                // On first page load, just store the old timestamp but DON'T go Live
+                // This prevents stale data from showing as "Live"
+                if (isFirstLoad) {
+                    isFirstLoad = false;
+                    lastTs = currentTs;
+
+                    // Still show the bus position on the map (but as offline)
+                    var newLatLng = [data.lat, data.lng];
+                    marker.setLatLng(newLatLng);
+                    map.flyTo(newLatLng, map.getZoom(), { animate: true, duration: 1.0 });
+
+                    // Start in offline mode until a FRESH update arrives
+                    setOfflineStatus();
+                    return;
+                }
+
+                // Only go Live if the timestamp actually changed (= fresh data from ESP)
+                if (currentTs === lastTs) {
+                    return; // Same data, no new write from ESP
+                }
+                lastTs = currentTs;
+
+                // Clear the offline timer every time we get FRESH data
                 clearTimeout(offlineTimeout);
 
                 // Update UI status to Active
@@ -152,15 +423,36 @@
 
                 var newLatLng = [data.lat, data.lng];
 
+                // Calculate bearing and rotate the bus image
+                if (lastLatLng && (lastLatLng[0] !== newLatLng[0] || lastLatLng[1] !== newLatLng[1])) {
+                    var dy = newLatLng[0] - lastLatLng[0]; // Difference in Latitude
+                    var dx = newLatLng[1] - lastLatLng[1]; // Difference in Longitude
+                    
+                    // Math.atan2(dx, dy) gives the angle from North (Y-axis) clockwise in degrees.
+                    var angle = Math.atan2(dx, dy) * 180 / Math.PI;
+                    
+                    // The generated realistic bus image points South by default.
+                    angle += 180;
+                    
+                    var svgEl = document.getElementById('bus-svg');
+                    if (svgEl) {
+                        svgEl.style.transform = `rotate(${angle}deg)`;
+                    }
+                }
+                lastLatLng = newLatLng;
+
                 // Update marker position and map view
                 marker.setLatLng(newLatLng);
                 map.flyTo(newLatLng, map.getZoom(), { animate: true, duration: 1.0 });
 
-                // Update popup
-                marker.getPopup().setContent(`<b>Bus 12B is Active</b><br>Lat: ${data.lat.toFixed(5)}<br>Lng: ${data.lng.toFixed(5)}`);
+                // Calculate next station
+                var nextStation = getNextStation(data.lat, data.lng);
 
-                // Set a timer: if 10 seconds pass without another update, mark as Not Active
-                offlineTimeout = setTimeout(setOfflineStatus, 10000);
+                // Update popup
+                marker.getPopup().setContent(`<b>Bus 12B is Active</b><br>Next Station: <b>${nextStation}</b><br><br><button onclick="openRoutePage()" style="padding: 6px 12px; background: #2b3990; color: white; border: none; border-radius: 4px; cursor: pointer; width: 100%;">View Route Progress</button>`);
+
+                // Set a timer: if 30 seconds pass without another update, mark as Not Active
+                offlineTimeout = setTimeout(setOfflineStatus, 30000);
 
             } else {
                 setOfflineStatus();
@@ -170,7 +462,9 @@
             statusIndicator.style.backgroundColor = '#f44336';
             statusIndicator.style.boxShadow = '0 0 8px #f44336';
             statusText.innerText = 'Error';
-            marker.getPopup().setContent('<b>Connection Error</b>');
+            if (marker.getPopup()) {
+                marker.getPopup().setContent('<b>Connection Error</b>');
+            }
         });
 
     </script>
